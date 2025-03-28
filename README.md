@@ -202,8 +202,12 @@ A simple example for running NEASE on a standard input:
 ([Notebook](https://github.com/louadi/NEASE-tutorials/blob/main/DCM_analysis.ipynb)/[Google Colab](https://colab.research.google.com/github/louadi/NEASE-tutorials/blob/main/DCM_analysis.ipynb))
 
 
+
 ## Development
+
+
 First released by: Zakaria Louadi
+
 Maintainer: Elias Albrecht 
 
 
