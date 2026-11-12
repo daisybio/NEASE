@@ -1,0 +1,42 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "nease"
+version = "1.4.0"
+description = "NEASE: A network-based approach for the enrichment of alternative splicing events"
+readme = "README.md"
+license = "GPL-3.0-only"
+license-files = ["LICENSE"]
+authors = [{ name = "Zakaria Louadi", email = "Zakaria.louadi@tum.de" }]
+requires-python = ">=3.10"
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Programming Language :: Python :: 3.15",
+    "Topic :: Scientific/Engineering :: Bio-Informatics",
+]
+dependencies = [
+    # the bundled data files are pickled with numpy 2 and cannot be read by numpy 1.x
+    "pandas>=2.2.2",
+    "numpy>=2.0",
+    "networkx>=2.5",
+    "plotly>=4.14.3",
+    "scipy>=1.6.2",
+    "statsmodels>=0.12.2",
+    "gseapy>=0.10.7",
+    "matplotlib>=3.4.1",
+    "mygene>=3.2.2",
+    "kaleido",
+]
+
+[project.urls]
+Homepage = "https://github.com/louadi/NEASE"
+
+[tool.setuptools.packages.find]
+include = ["nease*"]

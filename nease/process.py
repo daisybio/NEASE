@@ -121,7 +121,7 @@ def process_standard (data,
                 
         if remove_non_in_frame:
             # parse gene coord as one set 
-            data['coord']=data.apply(lambda x:{x[0],x[1],x[2]}  ,axis = 1)
+            data['coord']=data.apply(lambda x:{x.iloc[0],x.iloc[1],x.iloc[2]}  ,axis = 1)
             # only keep coding exons
             coding=[ (e not in nease_data.non_coding)  for e in data['coord']]
             data=data[coding]
@@ -177,7 +177,7 @@ def process_standard (data,
         mapping_tb=mapping_tb[['Gene name','NCBI gene ID','Gene stable ID','Exon stable ID','Pfam ID','max_change']]
         #mapping_tb=mapping_tb.sort_values(['max_change'].abs(), ascending=False)
         try:
-            mapping_tb=mapping_tb.reindex(mapping_tb['max_change'].abs().sort_values(ascending=False).index)
+            mapping_tb=mapping_tb.reindex(mapping_tb['max_change'].abs().sort_values(ascending=False, kind='stable').index)
         except:
             pass
         mapping_tb=mapping_tb[mapping_tb['NCBI gene ID'].notnull()]
@@ -392,7 +392,7 @@ def process_MAJIQ(data,
                                'NCBI gene ID','Gene stable ID','Genomic coding start','Genomic coding end','max_change','Pfam ID','source','targets']]
 
 
-                mapping_tb=mapping_tb.sort_values(['max_change'], ascending=False)
+                mapping_tb=mapping_tb.sort_values(['max_change'], ascending=False, kind='stable')
                 mapping_tb=mapping_tb[mapping_tb['NCBI gene ID'].notnull()]
                 mapping_tb['NCBI gene ID']=mapping_tb['NCBI gene ID'].astype('int').astype('str')
                 mapping_tb=mapping_tb.drop_duplicates()
@@ -434,36 +434,35 @@ def get_interfaces(data,nease_data,min_delta=.05,overlap_cal=True):
             pdb_mapped=pd.merge(data,nease_data.pdb,   left_on=columns[0], right_on='Gene stable ID').drop_duplicates()
             
         
-            if ~elm_mapped.empty:
-                 # any overlap is considered
-                elm_mapped['overl']=elm_mapped[["Genomic coding start", columns[1]]].max(axis=1) <= elm_mapped[["Genomic coding end",columns[2] ]].min(axis=1)
-                pdb_mapped['overl']=pdb_mapped[["Genomic coding start", columns[1]]].max(axis=1) <= pdb_mapped[["Genomic coding end",columns[2] ]].min(axis=1)
+            # any overlap is considered
+            elm_mapped['overl']=elm_mapped[["Genomic coding start", columns[1]]].max(axis=1) <= elm_mapped[["Genomic coding end",columns[2] ]].min(axis=1)
+            pdb_mapped['overl']=pdb_mapped[["Genomic coding start", columns[1]]].max(axis=1) <= pdb_mapped[["Genomic coding end",columns[2] ]].min(axis=1)
 
 
 
-                elm_mapped=elm_mapped[elm_mapped['overl']].drop_duplicates()
-                pdb_mapped=pdb_mapped[pdb_mapped['overl']].drop_duplicates()
-                
-                try:
-                            #try to get the delta PSI from the user input
-                    elm_mapped['dPSI']=elm_mapped[columns[3]].astype(float)
-                    pdb_mapped['dPSI']=pdb_mapped[columns[3]].astype(float)
+            elm_mapped=elm_mapped[elm_mapped['overl']].drop_duplicates()
+            pdb_mapped=pdb_mapped[pdb_mapped['overl']].drop_duplicates()
+
+            try:
+                        #try to get the delta PSI from the user input
+                elm_mapped['dPSI']=elm_mapped[columns[3]].astype(float)
+                pdb_mapped['dPSI']=pdb_mapped[columns[3]].astype(float)
 
 
-                            # significance filter (delta PSI)
-                    elm_mapped=elm_mapped[elm_mapped['dPSI'].abs()>=min_delta]
-                    pdb_mapped=pdb_mapped[pdb_mapped['dPSI'].abs()>=min_delta]
+                        # significance filter (delta PSI)
+                elm_mapped=elm_mapped[elm_mapped['dPSI'].abs()>=min_delta]
+                pdb_mapped=pdb_mapped[pdb_mapped['dPSI'].abs()>=min_delta]
 
-                except:
-                        # No delta PSI given
+            except:
+                    # No delta PSI given
 
-                        elm_mapped['dPSI']='-'
-                        pdb_mapped['dPSI']='-'
-
-
+                    elm_mapped['dPSI']='-'
+                    pdb_mapped['dPSI']='-'
 
 
-                elm_mapped=elm_mapped[['Gene stable ID','entrezgene','ELMIdentifier','dPSI']].drop_duplicates()
+
+
+            elm_mapped=elm_mapped[['Gene stable ID','entrezgene','ELMIdentifier','dPSI']].drop_duplicates()
                 
                 
 
@@ -477,20 +476,19 @@ def get_interfaces(data,nease_data,min_delta=.05,overlap_cal=True):
                 
                 
 
-            if ~elm_mapped.empty:
-                #check if the mapping based on coordinate match the gene ID provided from Majiq
-                elm_mapped=elm_mapped[elm_mapped['Gene ID']==elm_mapped['Gene stable ID']]
-                pdb_mapped=pdb_mapped[pdb_mapped['Gene ID']==pdb_mapped['Gene stable ID']]
+            #check if the mapping based on coordinate match the gene ID provided from Majiq
+            elm_mapped=elm_mapped[elm_mapped['Gene ID']==elm_mapped['Gene stable ID']]
+            pdb_mapped=pdb_mapped[pdb_mapped['Gene ID']==pdb_mapped['Gene stable ID']]
 
 
-                m= lambda x: max(list(x))
-                elm_mapped['dPSI']=elm_mapped['delta'].apply(m)
-                pdb_mapped['dPSI']=pdb_mapped['delta'].apply(m)
+            m= lambda x: max(list(x))
+            elm_mapped['dPSI']=elm_mapped['delta'].apply(m)
+            pdb_mapped['dPSI']=pdb_mapped['delta'].apply(m)
 
                 
                 
     #convert 
-    elm_mapped['Gene name']=elm_mapped['entrezgene'].apply(lambda x: Entrez_to_name(str(x),nease_data.mapping))
+    elm_mapped['Gene name']=elm_mapped['entrezgene'].apply(lambda x: Entrez_to_name(str(x),nease_data.gene_mapping,nease_data.organism))
     elm_mapped['ID']=elm_mapped['entrezgene'].astype("str")+"/"+elm_mapped['ELMIdentifier'].astype("str")
     elm_mapped=elm_mapped[['Gene name','entrezgene','Gene stable ID','ELMIdentifier','dPSI','ID']].drop_duplicates()
         
@@ -498,7 +496,7 @@ def get_interfaces(data,nease_data,min_delta=.05,overlap_cal=True):
     
     pdb_mapped=(pdb_mapped.dropna().groupby(["symbol",'Gene stable ID'])["entrezgene"].agg(list)).sort_values(ascending=False).reset_index(name='entrezgene')
     pdb_mapped['entrezgene']=pdb_mapped['entrezgene'].apply(lambda x: list(set(x)))
-    pdb_mapped['NCBI gene ID']=pdb_mapped['symbol'].apply(lambda x: name_to_entrez(str(x),nease_data.mapping))
+    pdb_mapped['NCBI gene ID']=pdb_mapped['symbol'].apply(lambda x: name_to_entrez(str(x),nease_data.gene_mapping,nease_data.organism))
     pdb_mapped['NCBI gene ID']=pdb_mapped['NCBI gene ID'].astype('str')
     
 
@@ -508,18 +506,36 @@ def get_interfaces(data,nease_data,min_delta=.05,overlap_cal=True):
     
 
     
-# Functions to convert IDs 
-def Entrez_to_name(gene,mapping):
+# Functions to convert IDs
+# organism: 'Human' or 'Mouse', used as the species ('human'/'mouse') of the online (mygene) lookup
+
+# Answers of the online lookups, so that a gene missing from the local table is only queried once per session
+online_lookups={}
+
+mg = mygene.MyGeneInfo()
+# the client sleeps (1 s) after every batch to space out large batch queries; these queries are a single batch (one gene)
+mg.delay = 0
+
+def lookup_online(gene,scope,field,organism):
+    key=(str(gene),scope,field,organism.lower())
+    if key not in online_lookups:
+        out = mg.querymany(str(gene), scopes=scope, fields=field, species=organism.lower(), verbose=False, as_dataframe = True,
+              df_index = True)
+        # not found: no column for the field
+        online_lookups[key]=out[field].to_numpy() if field in out else None
+    if online_lookups[key] is None:
+        raise KeyError(gene)
+    return online_lookups[key]
+
+
+def Entrez_to_name(gene,mapping,organism='Human'):
     try:
         name=mapping[mapping['NCBI gene ID']==int(gene)]['Gene name'].unique()
-        
+
         if len(name)==0:
-            
+
             # try to convert it online
-            mg = mygene.MyGeneInfo()
-            out = mg.querymany(str(gene), scopes="entrezgene", fields='symbol', species="human", verbose=False, as_dataframe = True,
-                  df_index = True)
-            name=out['symbol']
+            name=lookup_online(gene,"entrezgene",'symbol',organism)
         
         return name[0]
     
@@ -527,15 +543,12 @@ def Entrez_to_name(gene,mapping):
         return gene
     
     
-def Ensemb_to_entrez(gene,mapping):
+def Ensemb_to_entrez(gene,mapping,organism='Human'):
     try:
         entrez=mapping[mapping['Gene stable ID']==gene]['NCBI gene ID'].unique()
         if len(entrez)==0:
             # try to convert it online
-            mg = mygene.MyGeneInfo()
-            out = mg.querymany(gene, scopes="ensembl.gene", fields='entrezgene', species="human", verbose=False, as_dataframe = True,
-                  df_index = True)
-            entrez=out['entrezgene']
+            entrez=lookup_online(gene,"ensembl.gene",'entrezgene',organism)
             
 
         return int((entrez[0]))
@@ -543,16 +556,13 @@ def Ensemb_to_entrez(gene,mapping):
     except :
         return gene
     
-def Ensemb_to_name(gene,mapping):
+def Ensemb_to_name(gene,mapping,organism='Human'):
     try:
         name=mapping[mapping['Gene stable ID']==gene]['Gene name'].unique()
-            
+
         if len(name)==0:
             # try to convert it online
-            mg = mygene.MyGeneInfo()
-            out = mg.querymany(gene, scopes="ensembl.gene", fields='symbol', species="human", verbose=False, as_dataframe = True,
-                  df_index = True)
-            name=out['symbol']
+            name=lookup_online(gene,"ensembl.gene",'symbol',organism)
             
         return name[0]
     
@@ -561,17 +571,14 @@ def Ensemb_to_name(gene,mapping):
     
     
 # Functions to convert IDs 
-def name_to_entrez(gene,mapping):
+def name_to_entrez(gene,mapping,organism='Human'):
     try:
         name=mapping[mapping['Gene name']==str(gene)]['NCBI gene ID'].unique()
 
-        
+
         if len(name)==0:
             # try to convert it online
-            mg = mygene.MyGeneInfo()
-            out = mg.querymany(str(gene), scopes="symbol", fields='entrezgene', species="human", verbose=False, as_dataframe = True,
-                  df_index = True)
-            name=out['symbol']
+            name=lookup_online(gene,"symbol",'entrezgene',organism)
         
         return name[0]
     

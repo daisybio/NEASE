@@ -1,0 +1,10 @@
+# pip alternative to environment.yml: pip install -r requirements.txt (Python >= 3.10)
+pandas>=2.2
+numpy>=2.0
+pyarrow>=15
+networkx>=3.2
+requests
+pyyaml
+gemmi>=0.7
+zstandard
+biopython>=1.84

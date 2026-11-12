@@ -18,6 +18,8 @@ Next, NEASE performs gene set overrepresentation analysis and identifies enriche
 
 ## Installation
 
+NEASE requires Python 3.10 or newer (tested up to Python 3.15).
+
 To install the package from PyPI please run:
 
 `pip install nease` 
@@ -36,7 +38,9 @@ Enjoy your instance of NEASE
 
 ## Data input
 
-The standard input of the package (also the recommended) is a DataFrame object with Ensembl IDs of the genes and the exon coordinates from human genome build hg38 (GRCh38). For the mouse build, we used Ensembl version 109. 
+The standard input of the package (also the recommended) is a DataFrame object with Ensembl IDs of the genes and the exon coordinates from the human genome build GRCh38 (hg38) or the mouse genome build GRCm39 (mm39). NEASE's exon-domain annotation comes from Ensembl release 116 for both organisms.
+
+Coordinates from any Ensembl release (or GENCODE version) on these genome builds can be used: the builds have not changed, only the annotation of transcripts and exons. Exons that only exist in a much older or newer annotation may not be matched. Mouse data on the older GRCm38 (mm10) build, used by Ensembl up to release 102, has to be lifted over to GRCm39 first.
 
 - First column  - genes IDs (Only Ensembl gene IDs can be used).
 - Second column - start of the exon coordinate.
@@ -148,6 +152,70 @@ events.enrich(database=['Reactome'])
 ```
 
 
+###  NEASE enrichment with MSigDB gene sets and KEGG
+
+`enrich_msigdb()` works like `enrich()`, with the gene set collections of [MSigDB](https://www.gsea-msigdb.org/gsea/msigdb) (release 2026.2) and the current KEGG pathways from the [KEGG REST API](https://www.kegg.jp/kegg/rest/keggapi.html).
+The gene sets are downloaded the first time a database is used and kept in a local cache (`~/.cache/nease`, or the folder set in the `NEASE_CACHE` environment variable). NEASE computes the degree of every gene set in its networks when the gene sets are loaded.
+
+database: list of gene set databases (all databases of the organism if not given). `events.supported_gene_sets` lists them:
+
+| Database | Human (MSigDB collection) | Mouse (MSigDB collection) |
+|---|---|---|
+| Hallmark | H | MH |
+| Positional | C1 | M1 |
+| CGP | C2:CGP | M2:CGP |
+| BioCarta | C2:CP:BIOCARTA | M2:CP:BIOCARTA |
+| KEGG_MEDICUS | C2:CP:KEGG_MEDICUS | – |
+| PID | C2:CP:PID | – |
+| Reactome | C2:CP:REACTOME | M2:CP:REACTOME |
+| WikiPathways | C2:CP:WIKIPATHWAYS | M2:CP:WIKIPATHWAYS |
+| miRDB | C3:MIR:MIRDB | M3:MIRDB |
+| GTRD | C3:TFT:GTRD | M3:GTRD |
+| 3CA | C4:3CA | – |
+| CGN | C4:CGN | – |
+| CM | C4:CM | – |
+| GO:BP | C5:GO:BP | M5:GO:BP |
+| GO:CC | C5:GO:CC | M5:GO:CC |
+| GO:MF | C5:GO:MF | M5:GO:MF |
+| HPO | C5:HPO | – |
+| MP:General | – | M5:MPO:MP |
+| MPT:Tumor | – | M5:MPO:MPT |
+| C6:Onco | C6 | – |
+| C7:ImmuneSigDB | C7:IMMUNESIGDB | – |
+| C7:VAX | C7:VAX | – |
+| M7:Immuno | – | M7 |
+| C8:Cell_type | C8 | – |
+| M8:Cell_type | – | M8 |
+| C9:Comp_Perturb | C9 | – |
+| KEGG | KEGG REST API (hsa) | KEGG REST API (mmu) |
+
+cutoff: the p value cutoff.
+
+```python
+# Hallmark, Reactome and KEGG
+events.enrich_msigdb(database=['Hallmark', 'Reactome', 'KEGG'])
+
+# Gene Ontology
+events.enrich_msigdb(database=['GO:BP', 'GO:CC', 'GO:MF'])
+
+# all databases
+events.enrich_msigdb()
+```
+
+The results have the same format as `enrich()`; 'Source' is the gene set database. The pathway IDs are the MSigDB systematic names (e.g. M5890) or the KEGG pathway IDs (e.g. hsa04010, mmu04010) and can be used with `path_analysis()` and `Vis_path()`.
+
+Gene symbols of MSigDB are mapped to NCBI gene IDs with the mapping of MSigDB 2026.2 bundled with NEASE. Without internet access, or to use another MSigDB release, you can pass MSigDB JSON bundles downloaded from the [MSigDB download page](https://www.gsea-msigdb.org/gsea/downloads.jsp) (human (Hs) bundles for human data, mouse (Mm) bundles for mouse data) and, for another release, the matching "NCBI_Gene_ID" chip file:
+
+```python
+events.enrich_msigdb(database=['Reactome', 'GO:BP'], gene_sets='msigdb.v2026.2.Hs.json')
+events.enrich_msigdb(database=['Reactome'], gene_sets='c2.cp.reactome.v2025.1.Hs.json', chip='Human_NCBI_Gene_ID_MSigDB.v2025.1.Hs.chip')
+```
+
+The KEGG pathways are downloaded once and then read from the cache; delete the `kegg` folder of the cache to get the current KEGG pathways. NEASE prints the date of the KEGG download with the results.
+
+MSigDB is available under the [Creative Commons Attribution 4.0 International License](https://www.gsea-msigdb.org/gsea/msigdb_license_terms.jsp); some collections (KEGG MEDICUS, BioCarta) have additional terms. Please cite MSigDB when using its gene sets. The KEGG REST API is provided for academic use ([KEGG terms](https://www.kegg.jp/kegg/legal.html)); please cite KEGG when using KEGG pathways.
+
+
 ###  Pathway specific analysis
 
 
@@ -190,6 +258,20 @@ non_symmetrical_only: Run classical gene set enrichment for only non-symmetrical
 # Run on KEGG gene set
 events.classic_enrich(gseapy_databases=['KEGG_2019_Human'],non_symmetrical_only=True)
 ```
+
+
+## Annotation data
+
+The tables that map exons to Pfam domains (`nease/data/database/Human` and `Mouse`) are built from Ensembl release 116 (human GRCh38.p14, mouse GRCm39) through Ensembl BioMart with (needs the `requests` package):
+
+```
+python scripts/build_exon_domain_table.py Human nease/data/database/Human
+python scripts/build_exon_domain_table.py Mouse nease/data/database/Mouse
+```
+
+Each row is an exon of a protein-coding transcript whose coding part overlaps a Pfam domain of that transcript's protein. Earlier NEASE versions used older annotation (mouse: Ensembl 109). Run with `--mart https://feb2023.archive.ensembl.org`, the script reproduces that Ensembl 109 mouse table exactly. Because the new annotation contains more transcripts, more exons can be matched to domains, and results can differ slightly from earlier versions.
+
+The linear motif (ELM) and residue-level (PDB) interface annotations, the list of exons that disturb the ORF, and the interaction networks are unchanged.
 
 
 ## Tutorials

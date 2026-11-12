@@ -1,1 +1,13 @@
 .ipynb_checkpoints
+__pycache__/
+*.egg-info/
+build/
+dist/
+
+# network build: downloads, work folders and built networks (large; third-party data, see build_scripts/README.md)
+humanppi/
+boltz/
+networks/
+build_scripts/work_nease/
+# papers (publishers' and authors' copies)
+*.pdf

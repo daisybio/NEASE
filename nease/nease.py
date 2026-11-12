@@ -1,5 +1,6 @@
 
 from .functions import *
+from .gene_sets import load_gene_sets, GENE_SET_DATABASES, DEGREE_DDI, DEGREE_STRUCTURAL
 import statsmodels.api as sm
 import gseapy as gp
 
@@ -67,7 +68,10 @@ class run(object):
          """
         self.data=[]
         self.organism=organism
-        
+        self.p_value_cutoff=p_value_cutoff
+        # gene sets loaded with enrich_msigdb()
+        self.gene_sets=None
+
         if organism!='Human' and organism!='Mouse':
             print('Error: Please choose one of the  supported  organism: "Human" and "Mouse".')
         
@@ -81,6 +85,7 @@ class run(object):
             #Open the Join graph and databases of the selected organism:
             Join=network[organism]
             self.mapping=database_mapping[organism]
+            self.gene_mapping=gene_mapping[organism]
             self.path=Pathways[organism]
             self.ppi=PPI[organism]
             self.only_DDIs=only_DDIs
@@ -252,7 +257,8 @@ class run(object):
                 print('Running enrichment analysis...')
                 
                 self.supported_database=  list(self.path['source'].unique())
-                self.enrichment=pathway_enrichment(self.g2edges,self.path, self.mapping,organism,p_value_cutoff,self.only_DDIs).reset_index(drop=True)
+                self.supported_gene_sets=GENE_SET_DATABASES[organism]
+                self.enrichment=pathway_enrichment(self.g2edges,self.path, self.gene_mapping,organism,p_value_cutoff,self.only_DDIs).reset_index(drop=True)
                 print('NEASE enrichment done.')
                 
                 
@@ -287,7 +293,11 @@ class run(object):
             
             affecting_number=domain_number
             number_of_features=domain_number
-            
+
+            # no linear motif / residue data when running with only_DDIs=True
+            elm_number=0
+            pdb_number=0
+
             if not self.only_DDIs:
               
                     # genes with affected elm
@@ -396,7 +406,7 @@ class run(object):
             pdb_affected=self.pdb_affected.rename(columns={"symbol": "Gene name",'entrezgene':'Co-resolved interactions'}).copy()
             
             #Convert IDs to names
-            c=lambda x: [ Entrez_to_name(gene,self.mapping) for gene in list(set(x))]
+            c=lambda x: [ Entrez_to_name(gene,self.gene_mapping,self.organism) for gene in list(set(x))]
             pdb_affected['Co-resolved interactions symbol']=pdb_affected['Co-resolved interactions'].apply(c)
             
             
@@ -430,7 +440,7 @@ class run(object):
             
             edges=self.interacting_domains.copy()
             #Convert IDs to names
-            c=lambda x: [ Entrez_to_name(gene,self.mapping) for gene in list(set(x))]
+            c=lambda x: [ Entrez_to_name(gene,self.gene_mapping,self.organism) for gene in list(set(x))]
             edges['Affected binding']=edges['Affected binding (NCBI)'].apply(c)
 
             # count number of affected PPI for every domain
@@ -481,10 +491,15 @@ class run(object):
             print('No genes found on your input.')
             
         else:
+            # gseapy >= 1.3 only accepts lower case organism names in enrichr ('human', 'mouse')
+            organism=self.organism.lower()
+
             # get gene sets supported in gseapy
-            gseapy_library = gp.get_library_name(organism=self.organism)
-            
-            
+            gseapy_library = gp.get_library_name(organism=organism)
+
+            if isinstance(gseapy_databases,str):
+                gseapy_databases=[gseapy_databases]
+
             # compare with user input with gseapy_library
             gene_set_database=list(set(gseapy_library).intersection(gseapy_databases))
             
@@ -498,18 +513,26 @@ class run(object):
                 # run gene set enrichment
                 
                 if non_symmetrical_only:
-                    if self.input_type=="Majiq":
+                    if self.input_type=="MAJIQ":
                         print('Non-symmetrical exons enrichment is not available for Majiq output. Please use standard input. ')
-                        
+                        return
+
                     else:
                         # run only on non-symteric
-                        gene_list=[ Ensemb_to_name(x,self.mapping) for x in self.symetric_genes]
+                        gene_list=[ Ensemb_to_name(x,self.gene_mapping,self.organism) for x in self.symetric_genes]
                 else:     
                      # run on all genes
-                     gene_list=[ Ensemb_to_name(x,self.mapping) for x in self.spliced_genes]
+                     gene_list=[ Ensemb_to_name(x,self.gene_mapping,self.organism) for x in self.spliced_genes]
                         
                         
-                enr=gp.enrichr(gene_list=gene_list,organism=self.organism,gene_sets=gene_set_database,outdir=outdir)
+                try:
+                    enr=gp.enrichr(gene_list=gene_list,organism=organism,gene_sets=gene_set_database,outdir=outdir)
+                except ValueError as e:
+                    # gseapy fails while drawing its bar plot when no term passes its cutoff (0.05)
+                    if 'No enrich terms' not in str(e):
+                        raise
+                    print('No gene set passes the gseapy cutoff (adjusted p value 0.05); no plot was saved.')
+                    enr=gp.enrichr(gene_list=gene_list,organism=organism,gene_sets=gene_set_database,outdir=outdir,no_plot=True)
 
                 return enr.results.sort_values('Adjusted P-value')
             
@@ -571,30 +594,135 @@ class run(object):
 
 
                 enrich_results=self.enrichment[self.enrichment['Source'].isin(database)]
-                
-                # Correct for multiple testing
-                # fdr_bh : Benjamini/Hochberg (non-negative)
-                enrich_results['adj p_value']=sm.stats.multipletests(list(enrich_results['p_value']),method='fdr_bh',alpha=0.05)[1]
-                #enrich_results['adj p_value']=sm.stats.fdrcorrection(list(enrich_results['p_value']),alpha=0.01)[1]
-                
-                # shift column 'score to the last position
-                scores = enrich_results.pop('Nease score')
-                enrich_results.insert(len(enrich_results.columns), 'Nease score', scores)
 
                 print('NEASE enrichment for the pathway databases:\n',[ x for x in database])
-                num=len(enrich_results[enrich_results['adj p_value']<=cutoff])
-                if num==0:
-                    print('No enrichment found with the cutoff '+str(cutoff)+'.')
-                else:
-                    print("Found "+str(num)+" enriched pathways after multiple testing correction.\n")
+                return self._multiple_testing(enrich_results,cutoff)
 
-                return enrich_results.sort_values(['Nease score','p_value'],ascending=[False,True]).reset_index(drop=True)
 
-            
-            
 
-            
-    
+    def _multiple_testing(self, enrich_results, cutoff):
+
+        # Correct for multiple testing
+        # fdr_bh : Benjamini/Hochberg (non-negative)
+        enrich_results['adj p_value']=sm.stats.multipletests(list(enrich_results['p_value']),method='fdr_bh',alpha=0.05)[1]
+        #enrich_results['adj p_value']=sm.stats.fdrcorrection(list(enrich_results['p_value']),alpha=0.01)[1]
+
+        # shift column 'score to the last position
+        scores = enrich_results.pop('Nease score')
+        enrich_results.insert(len(enrich_results.columns), 'Nease score', scores)
+
+        num=len(enrich_results[enrich_results['adj p_value']<=cutoff])
+        if num==0:
+            print('No enrichment found with the cutoff '+str(cutoff)+'.')
+        else:
+            print("Found "+str(num)+" enriched pathways after multiple testing correction.\n")
+
+        return enrich_results.sort_values(['Nease score','p_value'],ascending=[False,True]).reset_index(drop=True)
+
+
+
+    def enrich_msigdb(self, database=None, cutoff=0.05, gene_sets=None, chip=None):
+
+        """
+        Run NEASE enrichment with gene sets from MSigDB (https://www.gsea-msigdb.org/gsea/msigdb)
+        and KEGG pathways from the KEGG REST API (https://www.kegg.jp/kegg/rest/keggapi.html).
+
+        The gene sets are downloaded the first time a database is used (MSigDB release 2026.2, current KEGG pathways)
+        and read from a local cache afterwards (~/.cache/nease, or the folder in the NEASE_CACHE environment variable).
+        The degree of every gene set in the NEASE networks is computed when the gene sets are loaded.
+
+
+        Parameters
+        ----------
+        database: List
+            Gene set databases for enrichment (all databases if not given). The databases of the organism are listed in
+            events.supported_gene_sets:
+            Human: 'Hallmark', 'Positional', 'CGP', 'BioCarta', 'KEGG_MEDICUS', 'PID', 'Reactome', 'WikiPathways', 'miRDB',
+                   'GTRD', '3CA', 'CGN', 'CM', 'GO:BP', 'GO:CC', 'GO:MF', 'HPO', 'C6:Onco', 'C7:ImmuneSigDB', 'C7:VAX',
+                   'C8:Cell_type', 'C9:Comp_Perturb', 'KEGG'
+            Mouse: 'Hallmark', 'Positional', 'CGP', 'BioCarta', 'Reactome', 'WikiPathways', 'miRDB', 'GTRD', 'GO:BP',
+                   'GO:CC', 'GO:MF', 'MP:General', 'MPT:Tumor', 'M7:Immuno', 'M8:Cell_type', 'KEGG'
+        cutoff: float
+            The p value cutoff.
+        gene_sets: str or list of str, optional
+            MSigDB JSON bundle(s) to use instead of downloading the MSigDB databases, e.g. the complete msigdb.v2026.2.Hs.json
+            (human (Hs) bundles for human data, mouse (Mm) bundles for mouse data).
+        chip: str, optional
+            MSigDB "NCBI_Gene_ID" chip file matching the MSigDB release of gene_sets, e.g. Human_NCBI_Gene_ID_MSigDB.v2026.2.Hs.chip,
+            used to map gene symbols to NCBI gene IDs. By default the mapping of MSigDB 2026.2 bundled with NEASE is used.
+
+
+        Returns
+        -------
+        pd.DataFrame Object
+            Same columns as enrich(). 'Pathway ID' is the MSigDB systematic name (e.g. M5890) or the KEGG pathway ID
+            (e.g. mmu04010), 'Source' the gene set database. The IDs can be used with path_analysis() and Vis_path().
+
+        Example:
+                events=nease.run(table, organism='Mouse')
+                events.enrich_msigdb(database=['Hallmark','Reactome','KEGG'])
+
+        """
+
+        if len(self.data)==0:
+            print('Processing failed')
+        elif len(self.interacting_domains)==0:
+            print('No affected edges identified.')
+
+        else:
+            if database is None:
+                database=self.supported_gene_sets
+            elif isinstance(database,str):
+                database=[database]
+
+            # Check if user input matches the available databases
+            not_supported=[ x for x in database if x not in self.supported_gene_sets]
+            database=[ x for x in self.supported_gene_sets if x in database]
+
+            if len(database)==0:
+                print('Please select a supported gene set database as an argument. ')
+                print('supported gene set databases for '+self.organism+' are :',[ x for x in self.supported_gene_sets],".")
+                print('\n')
+                return
+            if not_supported:
+                print('Not supported for '+self.organism+' (ignored):',not_supported)
+
+            table,n,summary=load_gene_sets(database,self.organism,gene_sets,chip)
+
+            if len(table)==0:
+                print('No gene sets found for the selected databases.')
+                return
+
+            print(str(summary['gene sets'])+' gene sets loaded.')
+            if 'gene symbols' in summary:
+                print(str(summary['gene symbols in the network'])+' of '+str(summary['gene symbols'])
+                      +' MSigDB gene symbols are part of the NEASE network.')
+            if 'KEGG download date' in summary:
+                print('KEGG pathways downloaded on '+summary['KEGG download date']+'.')
+
+            ppi_type=DEGREE_DDI if self.only_DDIs else DEGREE_STRUCTURAL
+            enrichment=pathway_enrichment(self.g2edges,table,self.gene_mapping,self.organism,self.p_value_cutoff,self.only_DDIs,
+                                          n=n[ppi_type],ppi_type=ppi_type).reset_index(drop=True)
+
+            # keep the gene sets for path_analysis() and Vis_path()
+            self.gene_sets={'table':table,'enrichment':enrichment,'n':n[ppi_type],'degree column':ppi_type}
+
+            print('NEASE enrichment for the gene set databases:\n',summary['databases'])
+            return self._multiple_testing(enrichment.copy(),cutoff)
+
+
+
+    def _pathway_source(self, path_id):
+
+        # Pathway table, enrichment, number of network edges and degree column for a pathway ID:
+        # built-in pathways first, then the gene sets loaded with enrich_msigdb()
+        if self.gene_sets is not None and not (self.enrichment['Pathway ID']==path_id).any():
+            return self.gene_sets['table'],self.gene_sets['enrichment'],self.gene_sets['n'],self.gene_sets['degree column']
+        return self.path,self.enrichment,None,None
+
+
+
+
     def path_analysis(self,path_id):
         
         '''
@@ -604,7 +732,7 @@ class run(object):
         ---------- 
         path_id: str 
             The ID of the pathway f interest.
-            Run enrich() to find enriched pathways and their IDs.
+            Run enrich() or enrich_msigdb() to find enriched pathways and their IDs.
             
             
         Returns
@@ -628,18 +756,23 @@ class run(object):
             print('No affected edges identified.') 
             
             
-        path_info=self.enrichment[self.enrichment['Pathway ID']==path_id]
+        paths,enrichment,n,ppi_type=self._pathway_source(path_id)
+        path_info=enrichment[enrichment['Pathway ID']==path_id]
         
         if len(path_info)==0:
             print('No pathway with the given ID found.')
-        
+
+        elif len(path_info)>1:
+            # e.g. INOH pathways have no ID ('None')
+            print('The given ID is shared by several pathways. Pathway specific analysis is not possible for this ID.')
+
         else:
             path_name=list(path_info['Pathway name'])[0]
             print('Enrichment of the pathway: '+path_name+'.\n')
             print('Overall p_value: ',list(path_info['p_value'])[0])
             print('\n')
             # run enrichment
-            enrich,_=single_path_enrich(path_id,self.path,self.g2edges,self.mapping,self.organism,self.only_DDIs)
+            enrich,_=single_path_enrich(path_id,paths,self.g2edges,self.gene_mapping,self.organism,self.only_DDIs,n,ppi_type)
             
             if len(enrich)==0:
                 print('No enrichment or genes found for the selected pathway.')
@@ -665,7 +798,7 @@ class run(object):
             ---------- 
             path_id: str 
                 The ID of the pathway f interest.
-                Run enrich() to find enriched pathways and their IDs.
+                Run enrich() or enrich_msigdb() to find enriched pathways and their IDs.
                 
             file: str
                  A string representing a local file path for the html file.
@@ -707,10 +840,15 @@ class run(object):
                 print('No affected edges identified.') 
 
 
-            path_info=self.enrichment[self.enrichment['Pathway ID']==path_id]
+            paths,enrichment,n,ppi_type=self._pathway_source(path_id)
+            path_info=enrichment[enrichment['Pathway ID']==path_id]
 
             if len(path_info)==0:
                 print('No pathway with the given ID found.')
+
+            elif len(path_info)>1:
+                # e.g. INOH pathways have no ID ('None')
+                print('The given ID is shared by several pathways. Pathway specific analysis is not possible for this ID.')
 
             else:
                 path_name=list(path_info['Pathway name'])[0]
@@ -719,7 +857,7 @@ class run(object):
                 print('\n')
                 # run enrichment
 
-                enrich,affected_graph=single_path_enrich(path_id,self.path,self.g2edges,self.mapping,self.organism,self.only_DDIs)
+                enrich,affected_graph=single_path_enrich(path_id,paths,self.g2edges,self.gene_mapping,self.organism,self.only_DDIs,n,ppi_type)
 
                 if len(enrich)==0:
                     print('No enrichment or genes found for the selected pathway.')
@@ -729,7 +867,7 @@ class run(object):
                 else:
 
                     # Get genes of the pathway (Entrez IDs)
-                    path_genes=list(self.path[ self.path['external_id']==path_id ]['entrez_gene_ids'])[0]
+                    path_genes=list(paths[ paths['external_id']==path_id ]['entrez_gene_ids'])[0]
 
                     significant= list(enrich [enrich ['p_value']<=0.05] ['NCBI gene ID'].unique())
 
@@ -738,20 +876,20 @@ class run(object):
                                                    list(enrich['NCBI gene ID'].unique()),
                                                    self.spliced_genes,
                                                    k,
-                                                   self.mapping,
+                                                   self.gene_mapping,
                                                    affected_graph,
-                                                   significant)
+                                                   significant,
+                                                   self.organism)
 
 
 
 
-                    path_info=self.enrichment[self.enrichment['Pathway ID']==path_id]
+                    path_info=enrichment[enrichment['Pathway ID']==path_id]
                     path_name=list(path_info['Pathway name'])[0]
 
                     fig = go.Figure(data=graph_data,
                                      layout=go.Layout(
-                                        title='<br>'+path_name,
-                                        titlefont_size=16,
+                                        title=dict(text='<br>'+path_name, font=dict(size=16)),
                                         showlegend=False,
                                         hovermode='closest',
                                         margin=dict(b=20,l=5,r=5,t=40),
@@ -765,11 +903,13 @@ class run(object):
                                         yaxis=dict(showgrid=False, zeroline=False, showticklabels=False)))
                     
 
-                    file_path=os.path.join(os.path.dirname(file),path_name+'.html')
+                    # pathway names can contain '/' (e.g. 'PI3K/AKT Signaling in Cancer')
+                    file_name=path_name.replace('/','_')
+                    file_path=os.path.join(os.path.dirname(file),file_name+'.html')
                     fig.write_html(file_path, auto_open=auto_open)
                     
                     if save_pdf:
-                        fig.write_image(os.path.join(os.path.dirname(file),path_name+'.pdf'),format='pdf',width=2544,height=1313)
+                        fig.write_image(os.path.join(os.path.dirname(file),file_name+'.pdf'),format='pdf',width=2544,height=1313)
                     
 
                     print('Visualization of the pathway generated in: '+file_path)

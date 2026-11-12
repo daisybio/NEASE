@@ -111,16 +111,14 @@ def affected_edges(nease_data,Join,only_DDIs):
                 
                 
                 
-                if ~elm_affected.empty:
-
-                    elm_affected=elm_affected.rename(columns={"ELMIdentifier": "Identifier",
-                                              "entrezgene": "NCBI gene ID"}).drop(columns=[ 'Gene stable ID','ID']).reset_index(drop=True) 
-
-                    
+                elm_affected=elm_affected.rename(columns={"ELMIdentifier": "Identifier",
+                                          "entrezgene": "NCBI gene ID"}).drop(columns=[ 'Gene stable ID','ID']).reset_index(drop=True)
 
 
 
-                    interacting_domains=pd.concat([interacting_domains, elm_affected], ignore_index=True)
+
+
+                interacting_domains=pd.concat([interacting_domains, elm_affected], ignore_index=True)
 
 
 
@@ -161,16 +159,20 @@ def gene_to_edges(data,pdb,only_DDIs):
     
     
     
-def pathway_enrichment(g2edges,paths, mapping,organism,p_value_cutoff,only_DDIs):
-    # General enrichment analysis
-    
-    pathway_genes=[]
+def builtin_network_size(organism,only_DDIs):
     # Totat degree of structural network for human (pre-computer)
     # For statistical test: edge enrichment
+    # Used with the built-in pathway tables; returns (number of edges, pathway degree column)
+
+    # rebuilt network (NEASE_DATA_DIR or replaced data files): sizes from its network_size_<organism>.json
+    if organism in network_sizes:
+        ppi_type='Degree in the PPI/DDI' if only_DDIs else 'Degree in the structural PPI'
+        return network_sizes[organism][ppi_type],ppi_type
+
     if organism=='Human':
         if only_DDIs:
             n=52467
-            
+
             #  every pathway degreee two sturctural PPIs and
             # 'Degree in the structural PPI' : degree in ppi annotated with DDI.DMI/PDB
             # 'Degree in the PPI/DDI' : degree in ppi annotated with DDI only
@@ -181,6 +183,8 @@ def pathway_enrichment(g2edges,paths, mapping,organism,p_value_cutoff,only_DDIs)
             ppi_type='Degree in the structural PPI'
 
     elif organism=='Mouse':
+        # The mouse pathway degrees and network sizes are computed from the bundled networks
+        # with gene_sets.network_degrees('Mouse') (PPI/DDI: 13348 edges, structural PPI: 31144 edges)
         if only_DDIs:
             n=13348
 
@@ -190,10 +194,24 @@ def pathway_enrichment(g2edges,paths, mapping,organism,p_value_cutoff,only_DDIs)
             ppi_type='Degree in the PPI/DDI'
 
         else:
-            n=31127
+            n=31144
             ppi_type='Degree in the structural PPI'
-    
-    # number of effected edges 
+
+    return n,ppi_type
+
+
+
+def pathway_enrichment(g2edges,paths, mapping,organism,p_value_cutoff,only_DDIs,n=None,ppi_type=None):
+    # General enrichment analysis
+    # n, ppi_type: number of network edges and pathway degree column (default: built-in pathway tables)
+
+    if n is None:
+        n,ppi_type=builtin_network_size(organism,only_DDIs)
+
+    # gene names, looked up once (not for every pathway)
+    names={}
+
+    # number of effected edges
     affected_edges=len([item for sublist in g2edges.values() for item in sublist])
 
 
@@ -207,22 +225,23 @@ def pathway_enrichment(g2edges,paths, mapping,organism,p_value_cutoff,only_DDIs)
     p_values=[]
     score=[]
     
-    for path in list(paths['pathway']):
+    # iterate over rows (not names): some pathway names occur in several sources
+    for path, path_source, path_external_id, path_genes, p in zip(paths['pathway'],
+                                                                   paths['source'],
+                                                                   paths['external_id'],
+                                                                   paths['entrez_gene_ids'],
+                                                                   paths[ppi_type]):
         # count of affected edges connected to the pathway
         # specific to that pathway list p
-        # initialise the variable for every path 
+        # initialise the variable for every path
         connected=0
         genes_tmp=[]
         gene_count=0
-        
-        try:
-            # get path total degree "p" and gene list
-            p=int(paths [paths['pathway']==path][ppi_type])
-            path_genes=list(paths [paths['pathway']==path]['entrez_gene_ids'])[0]
-            
-        except:
-            pass
-        
+
+        # path total degree "p"
+        p=int(p)
+        path_genes=set(path_genes)
+
         for gene in g2edges:
                 # for every affected gene
                 # count affected gene edges connected to the 
@@ -235,7 +254,9 @@ def pathway_enrichment(g2edges,paths, mapping,organism,p_value_cutoff,only_DDIs)
                     connected=connected+tmp
                     
                     # add gene to the gene list of the pathway
-                    genes_tmp.append(Entrez_to_name(gene,mapping) +" ("+str(tmp)+")")
+                    if gene not in names:
+                        names[gene]=Entrez_to_name(gene,mapping,organism)
+                    genes_tmp.append(names[gene] +" ("+str(tmp)+")")
                     
 
                     # gene specific test
@@ -269,8 +290,8 @@ def pathway_enrichment(g2edges,paths, mapping,organism,p_value_cutoff,only_DDIs)
             
         score.append( s  )
         path_name.append(path)
-        source.append(list(paths[paths['pathway']==path]['source'])[0])   
-        path_id.append(list(paths[paths['pathway']==path]['external_id'])[0]) 
+        source.append(path_source)
+        path_id.append(path_external_id)
         genes.append(genes_tmp)
 
         
@@ -281,38 +302,17 @@ def pathway_enrichment(g2edges,paths, mapping,organism,p_value_cutoff,only_DDIs)
 
     
     
-    return Enrichment.sort_values(['p_value'], ascending=True)
+    return Enrichment.sort_values(['p_value'], ascending=True, kind='stable')
 
 
 
-def single_path_enrich(path_id,Pathways,g2edges,mapping,organism,only_DDIs):
-        
+def single_path_enrich(path_id,Pathways,g2edges,mapping,organism,only_DDIs,n=None,ppi_type=None):
 
-        
-        # Totat degree of structural network for human (pre-computer)
-        # For statistical test: edge enrichment
-        if organism=='Human':
-            if only_DDIs:
-                n=52467
-                ppi_type='Degree in the PPI/DDI'
+        # n, ppi_type: number of network edges and pathway degree column (default: built-in pathway tables)
+        if n is None:
+            n,ppi_type=builtin_network_size(organism,only_DDIs)
 
-            else:
-                n=60235
-                ppi_type='Degree in the structural PPI'
-        elif organism == 'Mouse':
-            if only_DDIs:
-                n = 13348
-
-                 #  every pathway degreee two sturctural PPIs and
-                # 'Degree in the structural PPI' : degree in ppi annotated with DDI.DMI/PDB
-                # 'Degree in the PPI/DDI' : degree in ppi annotated with DDI only
-                ppi_type = 'Degree in the PPI/DDI'
-
-            else:
-                n = 31127
-                ppi_type = 'Degree in the structural PPI'
-
-        p=int(Pathways [Pathways['external_id']==path_id][ppi_type])
+        p=int(Pathways [Pathways['external_id']==path_id][ppi_type].iloc[0])
         path_genes=list(Pathways [Pathways['external_id']==path_id]['entrez_gene_ids'])[0]
         
         #collect:
@@ -344,11 +344,11 @@ def single_path_enrich(path_id,Pathways,g2edges,mapping,organism,only_DDIs):
                 _,p_value=edge_enrich(a,b,p,n)
                 
                 # Save results
-                spliced_genes.append(Entrez_to_name(g,mapping))
+                spliced_genes.append(Entrez_to_name(g,mapping,organism))
                 spliced_genes_entrez.append(g)
                 gene_association.append(g in path_genes)
                 num.append(str(a)+'/'+str(a+b))
-                affected_edges.append((',').join([ Entrez_to_name(x,mapping) for x in edges]))
+                affected_edges.append((',').join([ Entrez_to_name(x,mapping,organism) for x in edges]))
                 affected_edges_entrez.append((',').join(edges))
                 p_val.append(p_value)
                 
@@ -402,12 +402,13 @@ def extract_subnetwork(path_genes,
                        k,
                        mapping,
                        affected_graph,
-                       significant):
+                       significant,
+                       organism='Human'):
 
 
         # Affected_genes: genes with lost/gained interaction in the pathway
         # all_spliced_genes: all genes affected with splicing
-        all_spliced_genes=[ Ensemb_to_entrez(x,mapping) for x in all_spliced_genes]
+        all_spliced_genes=[ Ensemb_to_entrez(x,mapping,organism) for x in all_spliced_genes]
         
 
         # Extract the pathway module for the complete PPI
@@ -420,7 +421,8 @@ def extract_subnetwork(path_genes,
         
         
         #Position nodes using Fruchterman-Reingold force-directed algorithm.
-        pos = nx.spring_layout(G, k=k, iterations=100)
+        # (fixed seed: the same pathway is always drawn the same way)
+        pos = nx.spring_layout(G, k=k, iterations=100, seed=0)
         #pos = nx.kamada_kawai_layout(G)
         
 
@@ -430,41 +432,16 @@ def extract_subnetwork(path_genes,
             G.nodes[n]['pos'] = p
             
         
-        # Define node and edges in plott
-        node_trace = go.Scatter(x=[],
-                                y=[],
-                                text=[],
-                                mode='markers+text',
-                                hoverinfo='text',
-                                textposition='top center',
-                                #textfont_size = 22,
-                                marker=dict(
-                                reversescale=True,
-                                    color=[],
-                                    size=[],
-                                    line=dict(width=0)))
-        
-        
-        edge_trace = go.Scatter(x=[],
-                                y=[],
-                                mode='lines',
-                                line=dict(width=0.7,
-                                          color='#888'),
-                                hoverinfo='none')
-        
-        colored_edge_trace = go.Scatter(x=[],
-                                y=[],
-                                mode='lines',
-                                line=dict(width=4,
-                                          color='red'),
-                                hoverinfo='none')
+        # Collect nodes and edges in lists and create the plotly traces once at the end
+        # (growing a trace with += re-validates all of its points every time, which is very slow for large pathways)
+        node_x,node_y,node_text,node_color,node_size=[],[],[],[],[]
         
         for node in G.nodes():
             x, y = G.nodes[node]['pos']
-            node_trace['x'] += tuple([x])
-            node_trace['y'] += tuple([y])
-            node_info=Entrez_to_name(node,mapping)
-            node_trace['text']+=tuple([node_info])
+            node_x.append(x)
+            node_y.append(y)
+            node_info=Entrez_to_name(node,mapping,organism)
+            node_text.append(node_info)
             
             if not node in path_genes:
                 #Node not in pathway
@@ -487,10 +464,11 @@ def extract_subnetwork(path_genes,
                     size=50
                 else:size=20
                 
-            node_trace['marker']['color']+=tuple([color])
-            node_trace['marker']['size']+=tuple([size])
+            node_color.append(color)
+            node_size.append(size)
             
             
+        edge_x,edge_y,colored_edge_x,colored_edge_y=[],[],[],[]
         
         for edge in G.edges():
             
@@ -501,18 +479,43 @@ def extract_subnetwork(path_genes,
 
                 # Check if edge is affected
                 if affected_graph.has_edge(*edge):
-                        colored_edge_trace['x'] += tuple([x0, x1, None])
-                        colored_edge_trace['y'] += tuple([y0, y1, None])
+                        colored_edge_x += [x0, x1, None]
+                        colored_edge_y += [y0, y1, None]
                     
                     
                 else:
-                        edge_trace['x'] += tuple([x0, x1, None])
-                        edge_trace['y'] += tuple([y0, y1, None])
+                        edge_x += [x0, x1, None]
+                        edge_y += [y0, y1, None]
 
 
-            
+        # Define node and edges in plott
+        node_trace = go.Scatter(x=node_x,
+                                y=node_y,
+                                text=node_text,
+                                mode='markers+text',
+                                hoverinfo='text',
+                                textposition='top center',
+                                #textfont_size = 22,
+                                marker=dict(
+                                reversescale=True,
+                                    color=node_color,
+                                    size=node_size,
+                                    line=dict(width=0)))
         
-            
+        
+        edge_trace = go.Scatter(x=edge_x,
+                                y=edge_y,
+                                mode='lines',
+                                line=dict(width=0.7,
+                                          color='#888'),
+                                hoverinfo='none')
+        
+        colored_edge_trace = go.Scatter(x=colored_edge_x,
+                                y=colored_edge_y,
+                                mode='lines',
+                                line=dict(width=4,
+                                          color='red'),
+                                hoverinfo='none')
         
 
         return [ colored_edge_trace,node_trace,edge_trace]
@@ -550,20 +553,26 @@ def stats_domains(affecting_percentage,
 
         xpos = 0
         bottom = 0
-        ratios = [ round(elm_number/number_of_features, 2),round(pdb_number/number_of_features, 2),round(domain_number/number_of_features, 2)]
+        numbers = [elm_number, pdb_number, domain_number]
+        ratios = [ round(x/number_of_features, 2) for x in numbers]
         width = .2
         colors = ['#F0D0C8','#B09880','#9B412B']
+        features = ['Linear motifs', 'Residues','Domains']
 
-        for j in range(len(ratios)):
-            height = ratios[j]
-            ax2.bar(xpos, height, width, bottom=bottom, color=colors[j])
-            ypos = bottom + ax2.patches[j].get_height() / 2
+        # only draw features that are present (e.g. no motifs/residues with only_DDIs=True)
+        bars = []
+        for number, height, color, feature in zip(numbers, ratios, colors, features):
+            if number == 0:
+                continue
+            bar = ax2.bar(xpos, height, width, bottom=bottom, color=color, label=feature)
+            bars.append(bar)
+            ypos = bottom + height / 2
             bottom += height
-            ax2.text(xpos, ypos, "%d%%" % (ax2.patches[j].get_height() * 100),
+            ax2.text(xpos, ypos, "%d%%" % (height * 100),
                      ha='center')
 
         ax2.set_title('Affected features')
-        ax2.legend(('Linear motifs', 'Residues','Domains'))
+        ax2.legend(handles=bars)
         ax2.axis('off')
         ax2.set_xlim(- 2.5 * width, 2.5 * width)
 
