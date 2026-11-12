@@ -1,0 +1,46 @@
+{
+  "species": "Human",
+  "created": "2026-11-12T16:42:17",
+  "network_edges": {
+    "Degree in the PPI/DDI": 124012,
+    "Degree in the structural PPI": 135097
+  },
+  "evidence": [
+    "pdb_pair",
+    "af_pair",
+    "i3d_structure_pair",
+    "i3d_model_pair",
+    "pdb_homolog_pair",
+    "humanppi_pair",
+    "ddi_pdb",
+    "ddi_3did2020",
+    "ddi_ppidm_gold",
+    "boltz_pair"
+  ],
+  "interface_evidence": [
+    "pdb",
+    "af",
+    "i3d_structure",
+    "i3d_model",
+    "pdb_homolog",
+    "humanppi",
+    "boltz"
+  ],
+  "joint_graph": {
+    "nodes": 25451,
+    "edges": 271577,
+    "edges_by_evidence": {
+      "ddi_ppidm_gold": 195821,
+      "ddi_3did2020": 128062,
+      "ddi_pdb": 121736,
+      "pdb_homolog_pair": 16238,
+      "pdb_pair": 13534,
+      "humanppi_pair": 13146,
+      "i3d_structure_pair": 10688,
+      "i3d_model_pair": 10237,
+      "af_pair": 9238,
+      "boltz_pair": 751
+    }
+  },
+  "ppi_edges": 996631
+}

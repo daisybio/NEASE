@@ -1,0 +1,62 @@
+{
+  "species": "Mouse",
+  "created": "2026-11-12T16:45:52",
+  "network_edges": {
+    "Degree in the PPI/DDI": 115072,
+    "Degree in the structural PPI": 124543
+  },
+  "evidence": [
+    "pdb_pair",
+    "af_pair",
+    "pdb_pair_ortholog",
+    "af_pair_ortholog",
+    "i3d_structure_pair",
+    "i3d_model_pair",
+    "i3d_structure_pair_ortholog",
+    "i3d_model_pair_ortholog",
+    "pdb_homolog_pair",
+    "humanppi_pair",
+    "humanppi_pair_ortholog",
+    "ddi_pdb",
+    "ddi_3did2020",
+    "ddi_ppidm_gold",
+    "boltz_pair",
+    "boltz_pair_ortholog"
+  ],
+  "interface_evidence": [
+    "pdb",
+    "af",
+    "pdb_ortholog",
+    "af_ortholog",
+    "i3d_structure",
+    "i3d_model",
+    "i3d_structure_ortholog",
+    "i3d_model_ortholog",
+    "pdb_homolog",
+    "humanppi",
+    "humanppi_ortholog",
+    "boltz",
+    "boltz_ortholog"
+  ],
+  "joint_graph": {
+    "nodes": 23848,
+    "edges": 259804,
+    "edges_by_evidence": {
+      "ddi_ppidm_gold": 190637,
+      "ddi_3did2020": 122550,
+      "ddi_pdb": 113963,
+      "pdb_homolog_pair": 13180,
+      "pdb_pair_ortholog": 10495,
+      "humanppi_pair_ortholog": 10242,
+      "i3d_structure_pair_ortholog": 8231,
+      "af_pair": 7832,
+      "i3d_model_pair_ortholog": 7716,
+      "af_pair_ortholog": 5833,
+      "pdb_pair": 2088,
+      "i3d_structure_pair": 1830,
+      "i3d_model_pair": 1636,
+      "boltz_pair_ortholog": 524
+    }
+  },
+  "ppi_edges": 883687
+}

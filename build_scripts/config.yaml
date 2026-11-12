@@ -1,0 +1,181 @@
+# Configuration of the NEASE network build (see README.md).
+# Paths may use ~ and environment variables.
+
+# Working folder on a large shared file system (downloads, PDB and AlphaFold files, intermediate tables, output).
+# Needs about 150 GB (PDB archive ~70 GB, AlphaFold shards are deleted after extraction).
+work_dir:  /nfs/roberts/scratch/pi_mjh24/raa79/NEASE/build_scripts/work_nease
+
+# NEASE repository: its exon -> Pfam domain tables and pathway tables are used, and the validation
+# compares the new network with the one shipped there.
+nease_repo: /nfs/roberts/scratch/pi_mjh24/raa79/NEASE
+
+species: [Human, Mouse]
+
+# Must match the exon -> domain tables of NEASE (scripts/build_exon_domain_table.py)
+ensembl_release: 116
+
+sources:
+  sifts_pfam: https://ftp.ebi.ac.uk/pub/databases/msd/sifts/flatfiles/tsv/pdb_pfam_mapping.tsv.gz
+  sifts_uniprot: https://ftp.ebi.ac.uk/pub/databases/msd/sifts/flatfiles/tsv/pdb_chain_uniprot.tsv.gz
+  pfam_dead: https://ftp.ebi.ac.uk/pub/databases/Pfam/current_release/Pfam-A.dead.gz
+  ppidm: https://zenodo.org/api/records/4880347/files/PPIDMdata_2021.zip/content
+  biogrid: https://downloads.thebiogrid.org/Download/BioGRID/Latest-Release/BIOGRID-ALL-LATEST.tab3.zip
+  intact: https://ftp.ebi.ac.uk/pub/databases/intact/current/psimitab/intact.zip
+  huri: https://www.interactome-atlas.org/data/HuRI.tsv
+  bioplex_293t: https://bioplex.hms.harvard.edu/data/BioPlex_293T_Network_10K_Dec_2019.tsv
+  bioplex_hct116: https://bioplex.hms.harvard.edu/data/BioPlex_HCT116_Network_5.5K_Dec_2019.tsv
+  string_physical: https://stringdb-downloads.org/download/protein.physical.links.detailed.v12.0/{taxid}.protein.physical.links.detailed.v12.0.txt.gz
+  string_aliases: https://stringdb-downloads.org/download/protein.aliases.v12.0/{taxid}.protein.aliases.v12.0.txt.gz
+  elm_instances: http://elm.eu.org/instances.tsv?q=*&taxon={elm_taxon}&instance_logic=true%20positive
+  elm_interactions: http://elm.eu.org/interactions/as_tsv
+  elm_domains: http://elm.eu.org/interactiondomains.tsv
+  uniprot_idmapping: https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/idmapping/by_organism/{uniprot}_idmapping_selected.tab.gz
+  # UniProt sequences: reference proteomes of the species and Swiss-Prot of all species (steps 2 and 17)
+  uniprot_proteome: https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/reference_proteomes/Eukaryota/{proteome}/{proteome}_{taxid}.fasta.gz
+  uniprot_sprot: https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/complete/uniprot_sprot.fasta.gz
+  uniprot_varsplic: https://ftp.uniprot.org/pub/databases/uniprot/current_release/knowledgebase/complete/uniprot_sprot_varsplic.fasta.gz
+  # Boltz-2 models of measured direct human interactions (Ille et al. 2025; step 19), the GitHub repository as a zip
+  boltz: https://github.com/structural-interactome/human-interactome/archive/refs/heads/main.zip
+  ensembl_gtf: https://ftp.ensembl.org/pub/release-{release}/gtf/{ensembl}/{ensembl_file}.{release}.gtf.gz
+  ensembl_pep: https://ftp.ensembl.org/pub/release-{release}/fasta/{ensembl}/pep/{ensembl_file}.pep.all.fa.gz
+  ensembl_uniprot: https://ftp.ensembl.org/pub/release-{release}/tsv/{ensembl}/{ensembl_file}.{release}.uniprot.tsv.gz
+  ensembl_entrez: https://ftp.ensembl.org/pub/release-{release}/tsv/{ensembl}/{ensembl_file}.{release}.entrez.tsv.gz
+  # homologies of the mouse genes (Ensembl Compara; contains the human-mouse orthologs), for the human -> mouse transfer
+  compara_homologies: https://ftp.ensembl.org/pub/release-{release}/tsv/ensembl-compara/homologies/mus_musculus/Compara.{release}.protein_default.homologies.tsv.gz
+  afdb_heterodimers: https://ftp.ebi.ac.uk/pub/databases/alphafold/collaborations/nvda/heterodimer_metadata.csv
+  afdb_homodimers: https://ftp.ebi.ac.uk/pub/databases/alphafold/collaborations/nvda/homodimer_metadata.csv
+  # single model files (alphafold.download: models)
+  afdb_model: https://alphafold.ebi.ac.uk/files/{model}-model_v1.cif
+  # {kind}: heterodimers or homodimers, {tar}: tar file named in the metadata (alphafold.download: tars)
+  afdb_tar: https://ftp.ebi.ac.uk/pub/databases/alphafold/collaborations/nvda/{kind}/{tar}
+  # Interactome3D download page and files of a dataset (15_interactome3d.py)
+  i3d_page: https://interactome3d.irbbarcelona.org/downloadset.php?queryid={organism}&release=current&path={set}
+  i3d_file: https://interactome3d.irbbarcelona.org/user_data/{organism}/download/{set}/{file}
+  # PDB entries (asymmetric unit); not used when pdb.mirror is set
+  pdb_entry: https://files.rcsb.org/download/{pdb}.cif.gz
+
+# Physical protein-protein interactions (which proteins bind)
+ppi:
+  # biogrid, intact, huri, bioplex, string. STRING is off by default: most of its scores are functional
+  # associations, and its "databases" channel contains pathway databases (KEGG, Reactome), which would make
+  # the network partly encode the pathways NEASE tests. If used, only its physical network and experimental
+  # channel are read.
+  sources: [biogrid, intact, huri, bioplex]
+  # BioGRID physical experimental systems that do not indicate binding
+  biogrid_exclude_systems: [Co-localization, Proximity Label-MS]
+  # IntAct interaction types: direct interaction, physical association, association (co-complex)
+  intact_types: ['MI:0407', 'MI:0915', 'MI:0914']
+  # also drop IntAct interactions inferred by expanding complexes (spoke expansion)
+  intact_exclude_expanded: false
+  bioplex_min_pint: 0.75
+  string_min_experimental: 700
+  # an interaction is kept with at least min_sources sources or min_publications publications
+  min_sources: 1
+  min_publications: 1
+  # mouse: also use the human interactions of genes with one-to-one orthologs
+  mouse_from_human: true
+
+# Domain-domain and residue contacts in PDB structures
+pdb:
+  # local mirror of the wwPDB mmCIF archive in its divided layout (<mirror>/ab/1abc.cif.gz), e.g. made with
+  # rsync -rlpt -z --delete --port=33444 rsync.rcsb.org::ftp_data/structures/divided/mmCIF/ <mirror>
+  # null: the entries are downloaded from RCSB into <work_dir>/pdb_mmcif
+  mirror: null
+  shards: 400                 # array tasks of 05_pdb_contacts.py
+  methods: [X-RAY DIFFRACTION, ELECTRON MICROSCOPY, SOLUTION NMR]
+  max_resolution: 3.5         # X-ray and EM
+  max_assembly_chains: 60     # larger assemblies: the asymmetric unit is used
+  max_atoms: 500000
+  contact_distance: 5.0       # heavy atoms, Angstrom
+  min_domain_contacts: 5      # residue pairs for a domain-domain contact
+  min_interface_contacts: 5   # residue pairs for a protein-protein interface
+
+# Predicted complexes of the AlphaFold Database (EMBL-EBI / NVIDIA collaboration)
+alphafold:
+  enabled: true
+  homodimers: false
+  # models: single model files from the AlphaFold DB website (~10 GB for human and mouse)
+  # tars: the tar files of the FTP collection (~3 TB for human and mouse, takes days); use it only if the website
+  #       refuses the model downloads
+  download: models
+  # AFDB's high-confidence definition of the heterodimers (passes_quality_threshold): ipSAE >= 0.6, pDockQ2 >= 0.23
+  min_ipsae: 0.6
+  min_pdockq2: 0.23
+  min_plddt: 70               # interface residues need this confidence
+  tasks: 200                  # array tasks of 08_af_fetch.py and 09_af_contacts.py
+  contact_distance: 5.0
+  min_interface_contacts: 5
+
+# Interactome3D (step 15, optional): experimental structures (also of closely related proteins) and homology models
+# of protein interactions, mainly useful for mouse, where few complexes are solved
+interactome3d:
+  enabled: true
+  species: [Human, Mouse]
+  # representative: the best structure or model per interaction (human 1.4 GB, mouse 0.3 GB);
+  # complete: all of them (human 14 GB, mouse 2 GB)
+  set: representative
+  # Structure (experimental), Model (complex modelled on a related structure), Dom_dom_model (two domains modelled
+  # on a domain-domain template)
+  types: [Structure, Model, Dom_dom_model]
+  min_identity: 50            # % identity of a chain to the UniProt sequence it is mapped to
+
+# UniProt entries without an Ensembl translation of identical sequence (step 2) are placed on the transcript they
+# align to when this % of the UniProt sequence is aligned to identical residues
+uniprot:
+  min_identity: 95
+
+# Interfaces from PDB structures of closely related proteins (step 17): other species (rat, cow, ...) and paralogs
+homologs:
+  enabled: true
+  min_identity: 95            # % identity of the chain protein to the human/mouse protein (local alignment)
+  min_aligned: 50             # aligned residues
+  min_mapped: 0.8             # fraction of the interface residue pairs that must map
+  min_shared_words: 5         # candidate search: identical 10-residue words
+
+# Predicted human interactions of Zhang et al., Science 2025 (step 18): RoseTTAFold2-PPI / AlphaFold2 models.
+# Download from Dryad (doi:10.5061/dryad.15dv41p84, CC0): final_predictions.tar.gz (14 MB) and best_models.tar.gz
+# (67 GB). Paths relative to work_dir or absolute.
+humanppi:
+  enabled: true
+  predictions: downloads/humanppi/final_predictions.tar.gz
+  models: downloads/humanppi/best_models.tar.gz
+  precision: 90               # 90 (17,849 pairs) or 80 (29,257 pairs) % expected precision
+  require_known: false        # true: only predicted pairs that are in an interaction database (BioGRID, STRING, UniProt)
+  min_identity: 90            # % identity when a model chain has to be aligned to the current UniProt sequence
+
+# Boltz-2 models of 1,394 measured direct human interactions from IntAct (Ille et al., bioRxiv 2025; step 19).
+# models: the repository zip (downloaded by step 1) or a folder with the .cif files; empty: the step 1 download
+boltz:
+  enabled: true
+  models:
+  min_identity: 90            # % identity when a model chain has to be aligned to the UniProt sequence
+
+orthologs:
+  # human -> mouse transfer of residue positions (interfaces, motifs): minimum protein identity in %
+  min_identity: 50
+  threads: 16
+
+network:
+  # evidence used for the domain-level network (see README.md):
+  #   pdb_pair, af_pair            the two proteins in one PDB structure / AlphaFold model, domains in contact
+  #   pdb_pair_ortholog, af_pair_ortholog   (mouse) the same for the human orthologs
+  #   i3d_structure_pair, i3d_model_pair    the same in an Interactome3D structure / homology model (+ _ortholog)
+  #   pdb_homolog_pair             the same in a PDB structure of closely related proteins (step 17; + _ortholog)
+  #   humanppi_pair                the same in a confident model of the humanPPI predictions (step 18; + _ortholog)
+  #   boltz_pair                   the same in a Boltz-2 model of a measured direct interaction (step 19; + _ortholog)
+  #   ddi_pdb                      physical interaction + Pfam pair in contact in any PDB structure
+  #   ddi_3did2020                 physical interaction + Pfam pair of 3did (2020 snapshot in the PPIDM data)
+  #   ddi_ppidm_gold, ddi_ppidm_silver, ddi_ppidm_bronze   physical interaction + PPIDM predicted Pfam pair
+  evidence: [pdb_pair, af_pair, pdb_pair_ortholog, af_pair_ortholog, i3d_structure_pair, i3d_model_pair,
+             i3d_structure_pair_ortholog, i3d_model_pair_ortholog, pdb_homolog_pair, humanppi_pair, humanppi_pair_ortholog, boltz_pair, boltz_pair_ortholog,
+             ddi_pdb, ddi_3did2020, ddi_ppidm_gold]
+  # residue-level interfaces of the structural network (NEASE "pdb" table)
+  interface_evidence: [pdb, af, pdb_ortholog, af_ortholog, i3d_structure, i3d_model, i3d_structure_ortholog, i3d_model_ortholog, pdb_homolog,
+                       humanppi, humanppi_ortholog, boltz, boltz_ortholog]
+  # tiers whose structures/models count as physical interactions (true: all, false: none; the _ortholog transfers
+  # follow their tier). A tier left out still gives domain edges (its *_pair tier) and residue interfaces, but its
+  # pairs do not enter the PPI network or the catalogue tiers (ddi_*) unless another source has them.
+  structure_implies_ppi: [pdb, af, i3d_structure, i3d_model, pdb_homolog]
+  min_ddi_entries: 1
+  # motif-domain interactions: also motif instances x interaction partners carrying a binding domain of the motif class
+  elm_infer_from_ppi: true
