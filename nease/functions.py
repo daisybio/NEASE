@@ -163,6 +163,12 @@ def builtin_network_size(organism,only_DDIs):
     # Totat degree of structural network for human (pre-computer)
     # For statistical test: edge enrichment
     # Used with the built-in pathway tables; returns (number of edges, pathway degree column)
+
+    # rebuilt network (NEASE_DATA_DIR or replaced data files): sizes from its network_size_<organism>.json
+    if organism in network_sizes:
+        ppi_type='Degree in the PPI/DDI' if only_DDIs else 'Degree in the structural PPI'
+        return network_sizes[organism][ppi_type],ppi_type
+
     if organism=='Human':
         if only_DDIs:
             n=52467
